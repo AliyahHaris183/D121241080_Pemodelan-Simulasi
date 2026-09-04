@@ -3,6 +3,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from scipy.stats import skew, shapiro
 
+
 # ==========================================
 # DATA RATING FILM LETTERBOXD
 # ==========================================
@@ -14,7 +15,11 @@ rating = [
     4.0, 3.7, 4.0, 3.3, 3.2, 4.3, 3.8, 4.4, 3.0, 3.4
 ]
 
-# Membuat DataFrame
+
+# ==========================================
+# DATAFRAME
+# ==========================================
+
 df = pd.DataFrame({
     "Rating": rating
 })
@@ -29,8 +34,9 @@ median = df["Rating"].median()
 std = df["Rating"].std()
 skewness = skew(df["Rating"])
 
+
 print("==========================================")
-print("     STATISTIK DATA RATING FILM")
+print("       STATISTIK DATA RATING FILM")
 print("==========================================")
 
 print(f"Jumlah data       : {len(rating)}")
@@ -46,12 +52,14 @@ print(f"Skewness          : {skewness:.2f}")
 
 stat, p_value = shapiro(df["Rating"])
 
+
 print("\n==========================================")
-print("       UJI NORMALITAS SHAPIRO-WILK")
+print("      UJI NORMALITAS SHAPIRO-WILK")
 print("==========================================")
 
 print(f"Statistik         : {stat:.4f}")
 print(f"p-value           : {p_value:.4f}")
+
 
 if p_value > 0.05:
     print("Kesimpulan        : Data tidak menunjukkan")
@@ -71,6 +79,7 @@ print("\n==========================================")
 print("          INTERPRETASI SKEWNESS")
 print("==========================================")
 
+
 if skewness > 0:
     print("Distribusi cenderung menceng ke kanan")
     print("(positively skewed).")
@@ -87,15 +96,28 @@ else:
 # HISTOGRAM
 # ==========================================
 
-plt.figure(figsize=(8, 5))
+plt.figure(figsize=(10, 5))
+
+# Lebar kelas = 0.2
+
+# Data terendah = 2.5
+# Data tertinggi = 4.5
+
+bins = np.arange(2.4, 4.61, 0.2)
+
 
 plt.hist(
-    df["Rating"],
-    bins=np.arange(2.45, 4.56, 0.2),
+    rating,
+    bins=bins,
     color="#AEFEF6",
-    edgecolor="#000000",
+    edgecolor="black",
     linewidth=1.2
 )
+
+
+# ==========================================
+# JUDUL DAN LABEL
+# ==========================================
 
 plt.title(
     "Distribusi Rating Film pada Dataset Letterboxd",
@@ -103,15 +125,49 @@ plt.title(
     fontweight="bold"
 )
 
-plt.xlabel("Rating", fontsize=11)
-plt.ylabel("Frekuensi", fontsize=11)
+plt.xlabel(
+    "Rating",
+    fontsize=11
+)
 
-plt.xticks(np.arange(2.5, 4.6, 0.2))
+plt.ylabel(
+    "Frekuensi",
+    fontsize=11
+)
+
+
+# ==========================================
+# TANDA PADA SUMBU X
+# ==========================================
+
+plt.xticks(
+    [2.5, 2.8, 3.0, 3.2, 3.5, 3.8, 4.0, 4.2, 4.5]
+)
+
+
+# ==========================================
+# JARAK GRAFIK
+# ==========================================
+
+plt.xlim(
+    2.35,
+    4.65
+)
+
+
+# ==========================================
+# GRID
+# ==========================================
 
 plt.grid(
     axis="y",
     alpha=0.3
 )
+
+
+# ==========================================
+# TAMPILKAN
+# ==========================================
 
 plt.tight_layout()
 plt.show()
