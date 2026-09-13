@@ -72,5 +72,8 @@ ax.text(0.98, 0.02, eq_cdf, transform=ax.transAxes, ha="right", va="bottom",
         fontsize=10, bbox=dict(boxstyle="round,pad=0.5", fc="#f5f7fa", ec="#9aa5b1"))
 
 plt.tight_layout()
-plt.savefig("/mnt/user-data/outputs/beta_pdf_cdf.png", dpi=150)
-print("saved")
+
+plt.savefig("beta_pdf_cdf.png", dpi=150)
+print("saved successfully to beta_pdf_cdf.png")
+
+plt.show()
