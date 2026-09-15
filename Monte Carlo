@@ -1,0 +1,141 @@
+import random
+import numpy as np
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+
+def f(x):
+    return x**2
+
+a = 0.0
+b = 3.0
+Exact = (b**3 - a**3) / 3  # analytic solution = 9.0
+
+# ======================================================================
+# PART 1: Main simulation (Task 1-4) - N = 1,000,000
+# ======================================================================
+random.seed(2)
+NumSteps = 1000000
+
+# --- Task 2: Min-max Detection ---
+step = (b - a) / NumSteps
+ymin = f(a)
+ymax = f(a)
+for i in range(NumSteps + 1):
+    xv = a + i * step
+    yv = f(xv)
+    if yv < ymin:
+        ymin = yv
+    if yv > ymax:
+        ymax = yv
+
+print("ymin:", ymin)
+print("ymax:", ymax)
+
+# --- Task 3: Monte Carlo Method ---
+Area = (b - a) * (ymax - ymin)
+N = 1000000
+M = 0
+
+under_x, under_y = [], []
+over_x, over_y = [], []
+sample_every = 2000  # only store every 2000th point for plotting
+
+for i in range(N):
+    rx = random.uniform(a, b)
+    ry = random.uniform(ymin, ymax)
+    is_under = ry <= f(rx)
+    if is_under:
+        M += 1
+    if i % sample_every == 0:
+        if is_under:
+            under_x.append(rx)
+            under_y.append(ry)
+        else:
+            over_x.append(rx)
+            over_y.append(ry)
+
+NumericalIntegral = (M / N) * Area
+error = abs(NumericalIntegral - Exact)
+rel_error = error / Exact * 100
+
+print("Area (bounding square):", Area)
+print("M (points under curve):", M)
+print("N (total points):", N)
+print("Numerical Integral:", NumericalIntegral)
+print("Exact Integral:", Exact)
+print("Absolute Error:", error)
+print("Relative Error (%):", rel_error)
+
+# --- Task 4: Visualization ---
+x_curve = np.linspace(a, b, 500)
+y_curve = x_curve**2
+
+plt.figure(figsize=(8, 6))
+plt.scatter(over_x, over_y, color='yellow', s=3, label='Outside curve', alpha=0.6, edgecolors='none')
+plt.scatter(under_x, under_y, color='blue', s=3, label='Under curve', alpha=0.6, edgecolors='none')
+plt.plot(x_curve, y_curve, color='red', linewidth=2, label='f(x) = x^2')
+plt.xlabel('x')
+plt.ylabel('f(x)')
+plt.title('Monte Carlo Integration of f(x) = x^2 over [0, 3]')
+plt.legend(loc='upper left')
+plt.tight_layout()
+plt.savefig('monte_carlo_plot.png', dpi=150)
+plt.close()
+print("Plot saved: monte_carlo_plot.png")
+
+with open('results.txt', 'w') as fout:
+    fout.write(f"ymin={ymin}\n")
+    fout.write(f"ymax={ymax}\n")
+    fout.write(f"Area={Area}\n")
+    fout.write(f"M={M}\n")
+    fout.write(f"N={N}\n")
+    fout.write(f"NumericalIntegral={NumericalIntegral}\n")
+    fout.write(f"Exact={Exact}\n")
+    fout.write(f"AbsError={error}\n")
+    fout.write(f"RelError={rel_error}\n")
+print("Results saved: results.txt")
+
+# ======================================================================
+# PART 2: Convergence experiment - error vs N
+# ======================================================================
+print("\nRunning convergence experiment...")
+
+Ns = [100, 1000, 10000, 100000, 1000000]
+conv_results = []
+
+for n in Ns:
+    random.seed(2)
+    m = 0
+    for i in range(n):
+        rx = random.uniform(a, b)
+        ry = random.uniform(ymin, ymax)
+        if ry <= f(rx):
+            m += 1
+    numerical = (m / n) * Area
+    err = abs(numerical - Exact)
+    rel = err / Exact * 100
+    conv_results.append((n, numerical, err, rel))
+    print(n, numerical, err, rel)
+
+with open('convergence.txt', 'w') as fo:
+    for r in conv_results:
+        fo.write(",".join(str(x) for x in r) + "\n")
+print("Convergence data saved: convergence.txt")
+
+Ns_arr = [r[0] for r in conv_results]
+rel_arr = [r[3] for r in conv_results]
+
+plt.figure(figsize=(7, 5))
+plt.plot(Ns_arr, rel_arr, marker='o', color='darkred')
+plt.xscale('log')
+plt.xlabel('Number of Random Points (N)')
+plt.ylabel('Relative Error (%)')
+plt.title('Monte Carlo Integration Accuracy vs Number of Points')
+plt.grid(True, which='both', linestyle='--', alpha=0.5)
+plt.tight_layout()
+plt.savefig('convergence_plot.png', dpi=150)
+plt.close()
+print("Convergence plot saved: convergence_plot.png")
+
+print("\nAll done.")
