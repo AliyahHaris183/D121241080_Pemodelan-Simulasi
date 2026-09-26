@@ -44,7 +44,7 @@ import json
 np.random.seed(42)
 
 TICKER = "AAPL"
-DATA_PATH = "/home/claude/project/data/AAPL_yahoo_finance.csv"
+DATA_PATH = "AAPL_yahoo_finance.csv"
 DATA_SOURCE_URL = "https://finance.yahoo.com/quote/AAPL/history/"
 TRADING_DAYS = 252
 
@@ -165,7 +165,7 @@ if __name__ == "__main__":
     print(f"Estimasi drift tahunan (mu)  : {mu_annual*100:.2f}%")
     print(f"Estimasi volatilitas (sigma) : {sigma_annual*100:.2f}%")
 
-    plot_historical(hist_prices, hist_dates, "/home/claude/project/figures/stock_historical.png")
+    plot_historical(hist_prices, hist_dates, "stock_historical.png")
 
     # 2. Simulasi Monte Carlo multi-path, horizon 30 hari (sesuai instruksi)
     n_simulations = 10_000
@@ -173,16 +173,14 @@ if __name__ == "__main__":
     paths = simulate_gbm_paths(s0, mu_annual, sigma_annual, horizon_days, n_simulations)
     final_prices_30 = paths[:, -1]
 
-    plot_paths(paths, "/home/claude/project/figures/stock_paths_30d.png")
-    plot_final_distribution(final_prices_30, s0,
-                             "/home/claude/project/figures/stock_dist_30d.png", "30")
+    plot_paths(paths, "stock_paths_30d.png")
+    plot_final_distribution(final_prices_30, s0, "stock_dist_30d.png", "30")
 
     # 3. Simulasi tambahan horizon lebih panjang (1 tahun) untuk analisis risiko
     horizon_long = 252
     paths_long = simulate_gbm_paths(s0, mu_annual, sigma_annual, horizon_long, 5_000)
     final_prices_long = paths_long[:, -1]
-    plot_final_distribution(final_prices_long, s0,
-                             "/home/claude/project/figures/stock_dist_252d.png", "252")
+    plot_final_distribution(final_prices_long, s0, "stock_dist_252d.png", "252")
 
     # 4. Ringkasan statistik
     summary = {
@@ -213,11 +211,11 @@ if __name__ == "__main__":
         },
     }
 
-    with open("/home/claude/project/code/stock_results.json", "w") as f:
+    with open("stock_results.json", "w") as f:
         json.dump(summary, f, indent=2)
 
     print("\n--- Ringkasan horizon 30 hari ---")
     for k, v in summary["horizon_30d"].items():
         print(f"{k:15s}: {v:.3f}")
 
-    print("\nSelesai. Hasil disimpan ke stock_results.json dan folder figures/.")
+    print("\nSelesai. Hasil disimpan ke stock_results.json dan file gambar di dalam folder ini.")
