@@ -3,8 +3,7 @@
  PROJECT 2 : STOCK PRICE PREDICTION USING MONTE CARLO SIMULATION
               (Geometric Brownian Motion)
 ==================================================================
-Author : (Nama Mahasiswa)
-Matkul : Modul 3 - Monte Carlo Simulation (Week 6)
+Author : (D121241080 Andi Nurul Aliyah Haris)
 
 Konsep:
 Harga saham dimodelkan mengikuti Geometric Brownian Motion (GBM):
@@ -159,7 +158,7 @@ if __name__ == "__main__":
     mu_annual, sigma_annual, log_returns = compute_drift_volatility(hist_prices)
     s0 = hist_prices[-1]
 
-    print(f"Sumber data                 : {DATA_SOURCE_URL}")
+    print(f"Sumber data                  : {DATA_SOURCE_URL}")
     print(f"Periode data                 : {pd.Timestamp(hist_dates[0]).date()} s/d {pd.Timestamp(hist_dates[-1]).date()}")
     print(f"Jumlah hari data historis    : {len(hist_prices)}")
     print(f"Harga awal simulasi (S0)     : {s0:.2f} USD (harga penutupan terakhir)")
