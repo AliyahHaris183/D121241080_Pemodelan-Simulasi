@@ -1,0 +1,224 @@
+"""
+==================================================================
+ PROJECT 2 : STOCK PRICE PREDICTION USING MONTE CARLO SIMULATION
+              (Geometric Brownian Motion)
+==================================================================
+Author : (Nama Mahasiswa)
+Matkul : Modul 3 - Monte Carlo Simulation (Week 6)
+
+Konsep:
+Harga saham dimodelkan mengikuti Geometric Brownian Motion (GBM):
+
+    S(t+dt) = S(t) * exp[ (mu - 0.5*sigma^2) * dt + sigma * sqrt(dt) * Z ]
+
+dengan:
+    S(t)  : harga saham pada waktu t
+    mu    : expected return / drift tahunan (dari data historis)
+    sigma : volatilitas tahunan (dari data historis)
+    dt    : langkah waktu (1 hari kerja = 1/252 tahun)
+    Z     : bilangan acak dari distribusi normal standar N(0,1)
+
+SUMBER DATA HISTORIS (DATA ASLI / RIIL):
+Data harga historis AAPL diambil LANGSUNG dari Yahoo Finance
+(https://finance.yahoo.com/quote/AAPL/history/), mencakup 251 hari
+perdagangan aktual dari 25 September 2025 s/d 24 September 2026
+(±1 tahun data terkini). Kolom yang dipakai adalah 'Close' (harga
+penutupan harian, sudah disesuaikan untuk stock split).
+
+Catatan: Jika ingin memperbarui data ke periode terbaru, cukup ganti
+fungsi `get_historical_prices()` di bawah dengan:
+
+    import yfinance as yf
+    df = yf.download("AAPL", period="1y", interval="1d")
+    prices = df["Close"].values
+
+Seluruh pipeline berikutnya (hitung log-return, estimasi drift &
+volatilitas, simulasi Monte Carlo GBM) tidak perlu diubah sama sekali.
+==================================================================
+"""
+
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import json
+
+np.random.seed(42)
+
+TICKER = "AAPL"
+DATA_PATH = "/home/claude/project/data/AAPL_yahoo_finance.csv"
+DATA_SOURCE_URL = "https://finance.yahoo.com/quote/AAPL/history/"
+TRADING_DAYS = 252
+
+
+def get_historical_prices(csv_path=DATA_PATH):
+    """
+    Membaca data harga historis RIIL saham AAPL dari file CSV yang
+    telah diunduh langsung dari Yahoo Finance (lihat DATA_SOURCE_URL
+    di atas). Mengembalikan array harga penutupan (Close) terurut
+    berdasarkan tanggal (ascending).
+    """
+    df = pd.read_csv(csv_path)
+    df["Date"] = pd.to_datetime(df["Date"])
+    df = df.sort_values("Date").reset_index(drop=True)
+    prices = df["Close"].values
+    dates = df["Date"].values
+    return prices, dates
+
+
+def compute_drift_volatility(prices):
+    """
+    Menghitung drift (mu) dan volatilitas (sigma) TAHUNAN dari
+    deret harga historis, menggunakan log-return harian.
+    """
+    log_returns = np.diff(np.log(prices))
+    mu_daily = np.mean(log_returns)
+    sigma_daily = np.std(log_returns, ddof=1)
+
+    mu_annual = mu_daily * TRADING_DAYS
+    sigma_annual = sigma_daily * np.sqrt(TRADING_DAYS)
+    return mu_annual, sigma_annual, log_returns
+
+
+def simulate_gbm_paths(s0, mu, sigma, n_days, n_simulations):
+    """
+    Simulasi Monte Carlo multi-path untuk harga saham memakai GBM.
+
+    Returns
+    -------
+    paths : np.ndarray, shape (n_simulations, n_days+1)
+    """
+    dt = 1 / TRADING_DAYS
+    z = np.random.normal(0, 1, size=(n_simulations, n_days))
+    daily_returns = (mu - 0.5 * sigma**2) * dt + sigma * np.sqrt(dt) * z
+    log_paths = np.cumsum(daily_returns, axis=1)
+    paths = s0 * np.exp(log_paths)
+    paths = np.hstack([np.full((n_simulations, 1), s0), paths])
+    return paths
+
+
+def plot_historical(prices, dates, filename):
+    fig, ax = plt.subplots(figsize=(9, 4.5))
+    ax.plot(dates, prices, color="black", linewidth=1.2)
+    ax.set_title(f"Harga Historis Riil Saham {TICKER}\n"
+                 f"({pd.Timestamp(dates[0]).strftime('%d %b %Y')} - "
+                 f"{pd.Timestamp(dates[-1]).strftime('%d %b %Y')}, sumber: Yahoo Finance)")
+    ax.set_xlabel("Tanggal")
+    ax.set_ylabel("Harga penutupan (USD)")
+    ax.grid(alpha=0.3)
+    fig.autofmt_xdate()
+    plt.tight_layout()
+    plt.savefig(filename, dpi=150)
+    plt.close()
+
+
+def plot_paths(paths, filename, n_show=200):
+    fig, ax = plt.subplots(figsize=(9, 5.5))
+    idx = np.random.choice(paths.shape[0], min(n_show, paths.shape[0]), replace=False)
+    for i in idx:
+        ax.plot(paths[i], linewidth=0.6, alpha=0.35)
+    mean_path = paths.mean(axis=0)
+    ax.plot(mean_path, color="black", linewidth=2.2, label="Rata-rata semua simulasi")
+    ax.set_title(f"Simulasi Monte Carlo Harga Saham {TICKER}\n"
+                 f"({paths.shape[0]:,} lintasan, horizon {paths.shape[1]-1} hari)")
+    ax.set_xlabel("Hari ke depan")
+    ax.set_ylabel("Harga saham (USD)")
+    ax.legend()
+    ax.grid(alpha=0.3)
+    plt.tight_layout()
+    plt.savefig(filename, dpi=150)
+    plt.close()
+
+
+def plot_final_distribution(final_prices, s0, filename, day_label):
+    fig, ax = plt.subplots(figsize=(8, 5))
+    ax.hist(final_prices, bins=60, color="royalblue", alpha=0.75, edgecolor="white")
+    mean_p = np.mean(final_prices)
+    p5, p50, p95 = np.percentile(final_prices, [5, 50, 95])
+    ax.axvline(mean_p, color="crimson", linestyle="--", linewidth=2,
+               label=f"Mean = {mean_p:.2f}")
+    ax.axvline(s0, color="black", linestyle=":", linewidth=2,
+               label=f"Harga awal = {s0:.2f}")
+    ax.axvline(p5, color="darkorange", linestyle="-.", linewidth=1.5,
+               label=f"5th percentile = {p5:.2f}")
+    ax.axvline(p95, color="darkorange", linestyle="-.", linewidth=1.5,
+               label=f"95th percentile = {p95:.2f}")
+    ax.set_title(f"Distribusi Harga Saham Setelah {day_label} Hari\n"
+                 f"(hasil {len(final_prices):,} simulasi Monte Carlo)")
+    ax.set_xlabel("Harga saham (USD)")
+    ax.set_ylabel("Frekuensi")
+    ax.legend(fontsize=8)
+    ax.grid(alpha=0.3)
+    plt.tight_layout()
+    plt.savefig(filename, dpi=150)
+    plt.close()
+
+
+if __name__ == "__main__":
+    # 1. Ambil data historis RIIL & hitung drift/volatilitas
+    hist_prices, hist_dates = get_historical_prices()
+    mu_annual, sigma_annual, log_returns = compute_drift_volatility(hist_prices)
+    s0 = hist_prices[-1]
+
+    print(f"Sumber data                 : {DATA_SOURCE_URL}")
+    print(f"Periode data                 : {pd.Timestamp(hist_dates[0]).date()} s/d {pd.Timestamp(hist_dates[-1]).date()}")
+    print(f"Jumlah hari data historis    : {len(hist_prices)}")
+    print(f"Harga awal simulasi (S0)     : {s0:.2f} USD (harga penutupan terakhir)")
+    print(f"Estimasi drift tahunan (mu)  : {mu_annual*100:.2f}%")
+    print(f"Estimasi volatilitas (sigma) : {sigma_annual*100:.2f}%")
+
+    plot_historical(hist_prices, hist_dates, "/home/claude/project/figures/stock_historical.png")
+
+    # 2. Simulasi Monte Carlo multi-path, horizon 30 hari (sesuai instruksi)
+    n_simulations = 10_000
+    horizon_days = 30
+    paths = simulate_gbm_paths(s0, mu_annual, sigma_annual, horizon_days, n_simulations)
+    final_prices_30 = paths[:, -1]
+
+    plot_paths(paths, "/home/claude/project/figures/stock_paths_30d.png")
+    plot_final_distribution(final_prices_30, s0,
+                             "/home/claude/project/figures/stock_dist_30d.png", "30")
+
+    # 3. Simulasi tambahan horizon lebih panjang (1 tahun) untuk analisis risiko
+    horizon_long = 252
+    paths_long = simulate_gbm_paths(s0, mu_annual, sigma_annual, horizon_long, 5_000)
+    final_prices_long = paths_long[:, -1]
+    plot_final_distribution(final_prices_long, s0,
+                             "/home/claude/project/figures/stock_dist_252d.png", "252")
+
+    # 4. Ringkasan statistik
+    summary = {
+        "ticker": TICKER,
+        "data_source_url": DATA_SOURCE_URL,
+        "data_start_date": str(pd.Timestamp(hist_dates[0]).date()),
+        "data_end_date": str(pd.Timestamp(hist_dates[-1]).date()),
+        "n_historical_days": int(len(hist_prices)),
+        "s0": float(s0),
+        "mu_annual_pct": float(mu_annual * 100),
+        "sigma_annual_pct": float(sigma_annual * 100),
+        "n_simulations": n_simulations,
+        "horizon_30d": {
+            "mean": float(np.mean(final_prices_30)),
+            "median": float(np.median(final_prices_30)),
+            "std": float(np.std(final_prices_30)),
+            "p5": float(np.percentile(final_prices_30, 5)),
+            "p95": float(np.percentile(final_prices_30, 95)),
+            "prob_above_s0": float(np.mean(final_prices_30 > s0) * 100),
+        },
+        "horizon_252d": {
+            "mean": float(np.mean(final_prices_long)),
+            "median": float(np.median(final_prices_long)),
+            "std": float(np.std(final_prices_long)),
+            "p5": float(np.percentile(final_prices_long, 5)),
+            "p95": float(np.percentile(final_prices_long, 95)),
+            "prob_above_s0": float(np.mean(final_prices_long > s0) * 100),
+        },
+    }
+
+    with open("/home/claude/project/code/stock_results.json", "w") as f:
+        json.dump(summary, f, indent=2)
+
+    print("\n--- Ringkasan horizon 30 hari ---")
+    for k, v in summary["horizon_30d"].items():
+        print(f"{k:15s}: {v:.3f}")
+
+    print("\nSelesai. Hasil disimpan ke stock_results.json dan folder figures/.")
