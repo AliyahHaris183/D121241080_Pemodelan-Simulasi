@@ -16,20 +16,21 @@ pada laporan simulasi Monte Carlo:
     3. Grafik error (%) vs N (skala log-log)
     4. Grafik waktu eksekusi vs N
     5. Bar chart perbandingan proporsi titik di dalam (aktual vs teori pi/4)
-    6. Tabel ringkasan hasil (disimpan sebagai gambar + CSV + JSON)
+    6. Tabel ringkasan hasil (disimpan sebagai CSV + JSON di folder Downloads)
 
 Seluruh angka DAPAT DIREPRODUKSI: jalankan ulang skrip ini dan hasilnya
 akan selalu identik (karena seed acak dikunci = 42).
 ======================================================================
 """
 
+import os
 import time
 import json
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 
-OUT_DIR = "/home/claude/project/figures_quarter_full"
+DOWNLOAD_DIR = os.path.join(os.path.expanduser("~"), "Downloads")
 SEED = 42
 TRUE_PI = np.pi
 
@@ -66,7 +67,7 @@ def monte_carlo_pi_quarter(N, seed=SEED):
 # ----------------------------------------------------------------
 # 2. VISUALISASI 1: SEBARAN TITIK (SCATTER PLOT)
 # ----------------------------------------------------------------
-def plot_scatter(x, y, inside_mask, N, pi_hat, filename, max_points_shown=20_000):
+def plot_scatter(x, y, inside_mask, N, pi_hat, max_points_shown=20_000):
     fig, ax = plt.subplots(figsize=(6, 6))
 
     if N > max_points_shown:
@@ -93,14 +94,13 @@ def plot_scatter(x, y, inside_mask, N, pi_hat, filename, max_points_shown=20_000
                  fontsize=10)
     ax.legend(loc="lower left", fontsize=8)
     plt.tight_layout()
-    plt.savefig(filename, dpi=150)
-    plt.close()
+    plt.show()
 
 
 # ----------------------------------------------------------------
 # 3. VISUALISASI 2: KONVERGENSI PI_HAT vs N
 # ----------------------------------------------------------------
-def plot_convergence(sizes, estimates, filename):
+def plot_convergence(sizes, estimates):
     fig, ax = plt.subplots(figsize=(8, 5))
     ax.plot(sizes, estimates, marker="o", color="royalblue", label="π̂ (estimasi)")
     ax.axhline(TRUE_PI, color="crimson", linestyle="--", label=f"π sebenarnya = {TRUE_PI:.6f}")
@@ -112,14 +112,13 @@ def plot_convergence(sizes, estimates, filename):
     ax.legend()
     ax.grid(alpha=0.3)
     plt.tight_layout()
-    plt.savefig(filename, dpi=150)
-    plt.close()
+    plt.show()
 
 
 # ----------------------------------------------------------------
 # 4. VISUALISASI 3: ERROR (%) vs N  (log-log, dibandingkan O(1/sqrt(N)))
 # ----------------------------------------------------------------
-def plot_error(sizes, errors, filename):
+def plot_error(sizes, errors):
     sizes = np.array(sizes, dtype=float)
     errors = np.array(errors, dtype=float)
 
@@ -138,14 +137,13 @@ def plot_error(sizes, errors, filename):
     ax.legend()
     ax.grid(alpha=0.3, which="both")
     plt.tight_layout()
-    plt.savefig(filename, dpi=150)
-    plt.close()
+    plt.show()
 
 
 # ----------------------------------------------------------------
 # 5. VISUALISASI 4: WAKTU EKSEKUSI vs N
 # ----------------------------------------------------------------
-def plot_execution_time(sizes, times, filename):
+def plot_execution_time(sizes, times):
     fig, ax = plt.subplots(figsize=(8, 5))
     ax.plot(sizes, np.array(times) * 1000, marker="^", color="seagreen")
     ax.set_xscale("log")
@@ -155,14 +153,13 @@ def plot_execution_time(sizes, times, filename):
     ax.set_title("Waktu Eksekusi vs Jumlah Sampel N")
     ax.grid(alpha=0.3, which="both")
     plt.tight_layout()
-    plt.savefig(filename, dpi=150)
-    plt.close()
+    plt.show()
 
 
 # ----------------------------------------------------------------
 # 6. VISUALISASI 5: PROPORSI TITIK DI DALAM (AKTUAL vs TEORI pi/4)
 # ----------------------------------------------------------------
-def plot_proportion_bar(sample_sizes, n_inside_list, filename):
+def plot_proportion_bar(sample_sizes, n_inside_list):
     proportions = [n_in / n for n_in, n in zip(n_inside_list, sample_sizes)]
     theoretical = np.pi / 4
 
@@ -181,14 +178,13 @@ def plot_proportion_bar(sample_sizes, n_inside_list, filename):
     ax.set_title("Proporsi Titik Aktual vs Nilai Teoritis (π/4)")
     ax.legend()
     plt.tight_layout()
-    plt.savefig(filename, dpi=150)
-    plt.close()
+    plt.show()
 
 
 # ----------------------------------------------------------------
-# 7. TABEL RINGKASAN (sebagai gambar, agar mudah ditempel ke laporan)
+# 7. TABEL RINGKASAN
 # ----------------------------------------------------------------
-def plot_summary_table(df, filename):
+def plot_summary_table(df):
     fig, ax = plt.subplots(figsize=(10, 1.8 + 0.5 * len(df)))
     ax.axis("off")
     tbl = ax.table(cellText=df.values, colLabels=df.columns, loc="center", cellLoc="center")
@@ -199,8 +195,7 @@ def plot_summary_table(df, filename):
         tbl[0, j].set_facecolor("#1F2937")
         tbl[0, j].set_text_props(color="white", fontweight="bold")
     plt.tight_layout()
-    plt.savefig(filename, dpi=150, bbox_inches="tight")
-    plt.close()
+    plt.show()
 
 
 # ==================================================================
@@ -226,11 +221,14 @@ if __name__ == "__main__":
         print(f"{N:>12,} | {N_in:>10,} | {pi_hat:>11.6f} | {abs_err:>11.6f} | {err_pct:>8.4f}% | {t:>9.5f}")
 
         # (1) scatter plot per-N
-        plot_scatter(x, y, mask, N, pi_hat, f"{OUT_DIR}/scatter_{N}.png")
+        plot_scatter(x, y, mask, N, pi_hat)
 
     df_results = pd.DataFrame(results)
-    df_results.to_csv(f"{OUT_DIR}/../code/pi_quarter_full_results.csv", index=False)
-    with open(f"{OUT_DIR}/../code/pi_quarter_full_results.json", "w") as f:
+    csv_path = os.path.join(DOWNLOAD_DIR, "pi_quarter_full_results.csv")
+    json_path = os.path.join(DOWNLOAD_DIR, "pi_quarter_full_results.json")
+
+    df_results.to_csv(csv_path, index=False)
+    with open(json_path, "w") as f:
         json.dump(results, f, indent=2)
 
     # --- Analisis konvergensi & error pada rentang N yang lebih granular ---
@@ -244,16 +242,15 @@ if __name__ == "__main__":
         extra_time.append(t)
 
     # (2) konvergensi
-    plot_convergence(extra_sizes, extra_pi, f"{OUT_DIR}/convergence.png")
+    plot_convergence(extra_sizes, extra_pi)
     # (3) error (%) vs N
-    plot_error(extra_sizes, extra_err, f"{OUT_DIR}/error_vs_n.png")
+    plot_error(extra_sizes, extra_err)
     # (4) waktu eksekusi vs N
-    plot_execution_time(extra_sizes, extra_time, f"{OUT_DIR}/execution_time.png")
+    plot_execution_time(extra_sizes, extra_time)
     # (5) proporsi aktual vs teori
-    plot_proportion_bar(sample_sizes, [r["n_inside"] for r in results],
-                         f"{OUT_DIR}/proportion_bar.png")
+    plot_proportion_bar(sample_sizes, [r["n_inside"] for r in results])
 
-    # (6) tabel ringkasan sebagai gambar
+    # (6) tabel ringkasan
     df_display = df_results.copy()
     df_display["n_points"] = df_display["n_points"].map(lambda v: f"{v:,}")
     df_display["n_inside"] = df_display["n_inside"].map(lambda v: f"{v:,}")
@@ -263,8 +260,6 @@ if __name__ == "__main__":
     df_display["error_pct"] = df_display["error_pct"].map(lambda v: f"{v:.4f}%")
     df_display["elapsed_sec"] = df_display["elapsed_sec"].map(lambda v: f"{v:.5f}")
     df_display.columns = ["N", "N di dalam", "π̂", "π sebenarnya", "Error Absolut", "Error (%)", "Waktu (s)"]
-    plot_summary_table(df_display, f"{OUT_DIR}/summary_table.png")
+    plot_summary_table(df_display)
 
-    print(f"\nSelesai. Semua visualisasi tersimpan di: {OUT_DIR}/")
-    print("File dihasilkan: scatter_<N>.png (x3), convergence.png, error_vs_n.png,")
-    print("execution_time.png, proportion_bar.png, summary_table.png")
+    print(f"\nSelesai. File CSV dan JSON tersimpan di folder Downloads: {DOWNLOAD_DIR}")
