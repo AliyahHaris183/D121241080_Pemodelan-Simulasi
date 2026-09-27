@@ -16,250 +16,867 @@ pada laporan simulasi Monte Carlo:
     3. Grafik error (%) vs N (skala log-log)
     4. Grafik waktu eksekusi vs N
     5. Bar chart perbandingan proporsi titik di dalam (aktual vs teori pi/4)
-    6. Tabel ringkasan hasil (disimpan sebagai CSV + JSON di folder Downloads)
+    6. Tabel ringkasan hasil
+
+Data CSV dan JSON hanya akan disimpan jika SAVE_FILES = True.
 
 Seluruh angka DAPAT DIREPRODUKSI: jalankan ulang skrip ini dan hasilnya
 akan selalu identik (karena seed acak dikunci = 42).
 ======================================================================
 """
 
-import os
 import time
 import json
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 
-DOWNLOAD_DIR = os.path.join(os.path.expanduser("~"), "Downloads")
+
+# ======================================================================
+# PATH
+# ======================================================================
+
+# Folder utama project di Mac
+BASE_DIR = Path("/Users/aliyahharis/Desktop/pemsim")
+
+# Folder untuk menyimpan gambar jika SAVE_FILES = True
+OUT_DIR = BASE_DIR / "figures_quarter_full"
+
+# Folder untuk CSV dan JSON
+CODE_DIR = BASE_DIR / "code"
+
+# False = hanya tampilkan grafik, tidak otomatis menyimpan
+# True  = grafik + CSV + JSON juga disimpan ke folder project
+SAVE_FILES = False
+
+# Seed acak
 SEED = 42
+
+# Nilai Pi sebenarnya
 TRUE_PI = np.pi
 
 
-# ----------------------------------------------------------------
+# ======================================================================
+# FUNGSI BANTUAN PENYIMPANAN
+# ======================================================================
+
+def save_figure_if_enabled(fig, filename):
+    """
+    Menyimpan figure hanya jika SAVE_FILES = True.
+    """
+    if SAVE_FILES:
+        OUT_DIR.mkdir(parents=True, exist_ok=True)
+        fig.savefig(filename, dpi=150, bbox_inches="tight")
+
+
+# ======================================================================
 # 1. FUNGSI INTI SIMULASI
-# ----------------------------------------------------------------
+# ======================================================================
+
 def monte_carlo_pi_quarter(N, seed=SEED):
     """
     Estimasi Pi dengan pendekatan quarter-circle pada domain [0,1] x [0,1].
 
     Returns
     -------
-    pi_hat      : float  -- estimasi nilai Pi
-    N_in        : int    -- jumlah titik yang jatuh di dalam quarter circle
-    exec_time   : float  -- waktu eksekusi (detik)
-    x, y        : np.ndarray -- koordinat seluruh titik
-    inside_mask : np.ndarray (bool) -- True jika titik di dalam quarter circle
+    pi_hat      : float
+        Estimasi nilai Pi.
+
+    N_in        : int
+        Jumlah titik yang jatuh di dalam quarter circle.
+
+    exec_time   : float
+        Waktu eksekusi (detik).
+
+    x, y        : np.ndarray
+        Koordinat seluruh titik.
+
+    inside_mask : np.ndarray (bool)
+        True jika titik di dalam quarter circle.
     """
+
     np.random.seed(seed)
+
     start_time = time.time()
 
     x = np.random.uniform(0.0, 1.0, N)
     y = np.random.uniform(0.0, 1.0, N)
 
     inside_mask = (x**2 + y**2) <= 1.0
+
     N_in = int(np.sum(inside_mask))
+
     pi_hat = 4.0 * (N_in / N)
 
     exec_time = time.time() - start_time
+
     return pi_hat, N_in, exec_time, x, y, inside_mask
 
 
-# ----------------------------------------------------------------
+# ======================================================================
 # 2. VISUALISASI 1: SEBARAN TITIK (SCATTER PLOT)
-# ----------------------------------------------------------------
-def plot_scatter(x, y, inside_mask, N, pi_hat, max_points_shown=20_000):
+# ======================================================================
+
+def plot_scatter(
+    x,
+    y,
+    inside_mask,
+    N,
+    pi_hat,
+    filename,
+    max_points_shown=20_000
+):
     fig, ax = plt.subplots(figsize=(6, 6))
 
     if N > max_points_shown:
-        idx = np.random.RandomState(0).choice(N, max_points_shown, replace=False)
-        x_p, y_p, in_p = x[idx], y[idx], inside_mask[idx]
+
+        idx = np.random.RandomState(0).choice(
+            N,
+            max_points_shown,
+            replace=False
+        )
+
+        x_p = x[idx]
+        y_p = y[idx]
+        in_p = inside_mask[idx]
+
         note = f" (ditampilkan sampel {max_points_shown:,} dari {N:,} titik)"
+
     else:
-        x_p, y_p, in_p = x, y, inside_mask
+
+        x_p = x
+        y_p = y
+        in_p = inside_mask
+
         note = ""
 
-    ax.scatter(x_p[in_p], y_p[in_p], color="royalblue", s=3, label="Di dalam quarter circle")
-    ax.scatter(x_p[~in_p], y_p[~in_p], color="crimson", s=3, label="Di luar quarter circle")
+    # Titik di dalam
+    ax.scatter(
+        x_p[in_p],
+        y_p[in_p],
+        color="royalblue",
+        s=3,
+        label="Di dalam quarter circle"
+    )
 
+    # Titik di luar
+    ax.scatter(
+        x_p[~in_p],
+        y_p[~in_p],
+        color="crimson",
+        s=3,
+        label="Di luar quarter circle"
+    )
+
+    # Busur quarter circle
     theta = np.linspace(0, np.pi / 2, 200)
-    ax.plot(np.cos(theta), np.sin(theta), color="black", linewidth=1.5, linestyle="--",
-             label="Busur x²+y²=1")
+
+    ax.plot(
+        np.cos(theta),
+        np.sin(theta),
+        color="black",
+        linewidth=1.5,
+        linestyle="--",
+        label="Busur x²+y²=1"
+    )
 
     ax.set_xlim(-0.02, 1.02)
     ax.set_ylim(-0.02, 1.02)
+
     ax.set_aspect("equal")
+
     ax.set_xlabel("x")
     ax.set_ylabel("y")
-    ax.set_title(f"Sebaran Titik Monte Carlo (Quarter Circle)\nN = {N:,} | π̂ = {pi_hat:.6f}{note}",
-                 fontsize=10)
-    ax.legend(loc="lower left", fontsize=8)
+
+    ax.set_title(
+        f"Sebaran Titik Monte Carlo (Quarter Circle)\n"
+        f"N = {N:,} | π̂ = {pi_hat:.6f}{note}",
+        fontsize=10
+    )
+
+    ax.legend(
+        loc="lower left",
+        fontsize=8
+    )
+
     plt.tight_layout()
-    plt.show()
+
+    save_figure_if_enabled(
+        fig,
+        OUT_DIR / f"scatter_{N}.png"
+    )
+
+    return fig
 
 
-# ----------------------------------------------------------------
+# ======================================================================
 # 3. VISUALISASI 2: KONVERGENSI PI_HAT vs N
-# ----------------------------------------------------------------
-def plot_convergence(sizes, estimates):
+# ======================================================================
+
+def plot_convergence(sizes, estimates, filename):
+
     fig, ax = plt.subplots(figsize=(8, 5))
-    ax.plot(sizes, estimates, marker="o", color="royalblue", label="π̂ (estimasi)")
-    ax.axhline(TRUE_PI, color="crimson", linestyle="--", label=f"π sebenarnya = {TRUE_PI:.6f}")
-    ax.fill_between(sizes, TRUE_PI - 0.02, TRUE_PI + 0.02, color="crimson", alpha=0.07)
+
+    ax.plot(
+        sizes,
+        estimates,
+        marker="o",
+        color="royalblue",
+        label="π̂ (estimasi)"
+    )
+
+    ax.axhline(
+        TRUE_PI,
+        color="crimson",
+        linestyle="--",
+        label=f"π sebenarnya = {TRUE_PI:.6f}"
+    )
+
+    ax.fill_between(
+        sizes,
+        TRUE_PI - 0.02,
+        TRUE_PI + 0.02,
+        color="crimson",
+        alpha=0.07
+    )
+
     ax.set_xscale("log")
+
     ax.set_xlabel("N (skala logaritmik)")
     ax.set_ylabel("Estimasi π")
-    ax.set_title("Konvergensi Estimasi π terhadap N — Metode Quarter Circle")
+
+    ax.set_title(
+        "Konvergensi Estimasi π terhadap N — Metode Quarter Circle"
+    )
+
     ax.legend()
+
     ax.grid(alpha=0.3)
+
     plt.tight_layout()
-    plt.show()
+
+    save_figure_if_enabled(
+        fig,
+        filename
+    )
+
+    return fig
 
 
-# ----------------------------------------------------------------
-# 4. VISUALISASI 3: ERROR (%) vs N  (log-log, dibandingkan O(1/sqrt(N)))
-# ----------------------------------------------------------------
-def plot_error(sizes, errors):
+# ======================================================================
+# 4. VISUALISASI 3: ERROR (%) vs N
+# ======================================================================
+
+def plot_error(sizes, errors, filename):
+
     sizes = np.array(sizes, dtype=float)
     errors = np.array(errors, dtype=float)
 
-    # Garis referensi teoritis O(1/sqrt(N)), dinormalisasi agar mulai
-    # dari titik pertama data aktual (hanya sebagai referensi laju, bukan nilai eksak)
-    ref = errors[0] * np.sqrt(sizes[0] / sizes)
+    # Garis referensi teoritis O(1/sqrt(N))
+    # dinormalisasi agar mulai dari titik pertama data aktual
+    ref = errors[0] * np.sqrt(
+        sizes[0] / sizes
+    )
 
     fig, ax = plt.subplots(figsize=(8, 5))
-    ax.plot(sizes, errors, marker="s", color="darkorange", label="Error aktual (%)")
-    ax.plot(sizes, ref, linestyle=":", color="gray", label="Referensi laju teoritis O(1/√N)")
+
+    ax.plot(
+        sizes,
+        errors,
+        marker="s",
+        color="darkorange",
+        label="Error aktual (%)"
+    )
+
+    ax.plot(
+        sizes,
+        ref,
+        linestyle=":",
+        color="gray",
+        label="Referensi laju teoritis O(1/√N)"
+    )
+
     ax.set_xscale("log")
     ax.set_yscale("log")
+
     ax.set_xlabel("N (skala logaritmik)")
-    ax.set_ylabel("Error absolut (%) - skala logaritmik")
-    ax.set_title("Penurunan Error (Galat) terhadap N — Metode Quarter Circle")
+
+    ax.set_ylabel(
+        "Error absolut (%) - skala logaritmik"
+    )
+
+    ax.set_title(
+        "Penurunan Error (Galat) terhadap N — Metode Quarter Circle"
+    )
+
     ax.legend()
-    ax.grid(alpha=0.3, which="both")
+
+    ax.grid(
+        alpha=0.3,
+        which="both"
+    )
+
     plt.tight_layout()
-    plt.show()
+
+    save_figure_if_enabled(
+        fig,
+        filename
+    )
+
+    return fig
 
 
-# ----------------------------------------------------------------
+# ======================================================================
 # 5. VISUALISASI 4: WAKTU EKSEKUSI vs N
-# ----------------------------------------------------------------
-def plot_execution_time(sizes, times):
+# ======================================================================
+
+def plot_execution_time(sizes, times, filename):
+
     fig, ax = plt.subplots(figsize=(8, 5))
-    ax.plot(sizes, np.array(times) * 1000, marker="^", color="seagreen")
+
+    ax.plot(
+        sizes,
+        np.array(times) * 1000,
+        marker="^",
+        color="seagreen"
+    )
+
     ax.set_xscale("log")
     ax.set_yscale("log")
+
     ax.set_xlabel("N (skala logaritmik)")
-    ax.set_ylabel("Waktu eksekusi (milidetik) - skala logaritmik")
-    ax.set_title("Waktu Eksekusi vs Jumlah Sampel N")
-    ax.grid(alpha=0.3, which="both")
+
+    ax.set_ylabel(
+        "Waktu eksekusi (milidetik) - skala logaritmik"
+    )
+
+    ax.set_title(
+        "Waktu Eksekusi vs Jumlah Sampel N"
+    )
+
+    ax.grid(
+        alpha=0.3,
+        which="both"
+    )
+
     plt.tight_layout()
-    plt.show()
+
+    save_figure_if_enabled(
+        fig,
+        filename
+    )
+
+    return fig
 
 
-# ----------------------------------------------------------------
-# 6. VISUALISASI 5: PROPORSI TITIK DI DALAM (AKTUAL vs TEORI pi/4)
-# ----------------------------------------------------------------
-def plot_proportion_bar(sample_sizes, n_inside_list):
-    proportions = [n_in / n for n_in, n in zip(n_inside_list, sample_sizes)]
+# ======================================================================
+# 6. VISUALISASI 5: PROPORSI TITIK DI DALAM
+# ======================================================================
+
+def plot_proportion_bar(sample_sizes, n_inside_list, filename):
+
+    proportions = [
+        n_in / n
+        for n_in, n in zip(
+            n_inside_list,
+            sample_sizes
+        )
+    ]
+
     theoretical = np.pi / 4
 
     fig, ax = plt.subplots(figsize=(7, 5))
-    labels = [f"N={n:,}" for n in sample_sizes]
-    bars = ax.bar(labels, proportions, color="royalblue", alpha=0.8, label="Proporsi aktual (N_in/N)")
-    ax.axhline(theoretical, color="crimson", linestyle="--",
-               label=f"Proporsi teoritis (π/4 = {theoretical:.6f})")
 
-    for bar, p in zip(bars, proportions):
-        ax.text(bar.get_x() + bar.get_width()/2, p + 0.002, f"{p:.5f}",
-                ha="center", fontsize=9)
+    labels = [
+        f"N={n:,}"
+        for n in sample_sizes
+    ]
 
-    ax.set_ylim(0.75, 0.82)
-    ax.set_ylabel("Proporsi titik di dalam quarter circle")
-    ax.set_title("Proporsi Titik Aktual vs Nilai Teoritis (π/4)")
+    bars = ax.bar(
+        labels,
+        proportions,
+        color="royalblue",
+        alpha=0.8,
+        label="Proporsi aktual (N_in/N)"
+    )
+
+    ax.axhline(
+        theoretical,
+        color="crimson",
+        linestyle="--",
+        label=f"Proporsi teoritis (π/4 = {theoretical:.6f})"
+    )
+
+    for bar, p in zip(
+        bars,
+        proportions
+    ):
+
+        ax.text(
+            bar.get_x() + bar.get_width() / 2,
+            p + 0.002,
+            f"{p:.5f}",
+            ha="center",
+            fontsize=9
+        )
+
+    ax.set_ylim(
+        0.75,
+        0.82
+    )
+
+    ax.set_ylabel(
+        "Proporsi titik di dalam quarter circle"
+    )
+
+    ax.set_title(
+        "Proporsi Titik Aktual vs Nilai Teoritis (π/4)"
+    )
+
     ax.legend()
+
     plt.tight_layout()
-    plt.show()
+
+    save_figure_if_enabled(
+        fig,
+        filename
+    )
+
+    return fig
 
 
-# ----------------------------------------------------------------
-# 7. TABEL RINGKASAN
-# ----------------------------------------------------------------
-def plot_summary_table(df):
-    fig, ax = plt.subplots(figsize=(10, 1.8 + 0.5 * len(df)))
+# ======================================================================
+# 7. TABEL RINGKASAN SEBAGAI VISUALISASI
+# ======================================================================
+
+def plot_summary_table(df, filename):
+
+    fig, ax = plt.subplots(
+        figsize=(10, 1.8 + 0.5 * len(df))
+    )
+
     ax.axis("off")
-    tbl = ax.table(cellText=df.values, colLabels=df.columns, loc="center", cellLoc="center")
+
+    tbl = ax.table(
+        cellText=df.values,
+        colLabels=df.columns,
+        loc="center",
+        cellLoc="center"
+    )
+
     tbl.auto_set_font_size(False)
+
     tbl.set_fontsize(10)
-    tbl.scale(1, 1.8)
+
+    tbl.scale(
+        1,
+        1.8
+    )
+
     for j in range(len(df.columns)):
+
         tbl[0, j].set_facecolor("#1F2937")
-        tbl[0, j].set_text_props(color="white", fontweight="bold")
+
+        tbl[0, j].set_text_props(
+            color="white",
+            fontweight="bold"
+        )
+
     plt.tight_layout()
-    plt.show()
+
+    save_figure_if_enabled(
+        fig,
+        filename
+    )
+
+    return fig
 
 
-# ==================================================================
+# ======================================================================
 # MAIN
-# ==================================================================
+# ======================================================================
+
 if __name__ == "__main__":
-    sample_sizes = [10_000, 100_000, 1_000_000]
+
+    # --------------------------------------------------------------
+    # Pastikan folder tersedia jika penyimpanan diaktifkan
+    # --------------------------------------------------------------
+
+    if SAVE_FILES:
+
+        OUT_DIR.mkdir(
+            parents=True,
+            exist_ok=True
+        )
+
+        CODE_DIR.mkdir(
+            parents=True,
+            exist_ok=True
+        )
+
+
+    # --------------------------------------------------------------
+    # Ukuran sampel utama
+    # --------------------------------------------------------------
+
+    sample_sizes = [
+        10_000,
+        100_000,
+        1_000_000
+    ]
+
     results = []
 
-    print(f"{'N':>12} | {'N_in':>10} | {'pi_hat':>11} | {'abs_error':>11} | {'error%':>9} | {'time(s)':>9}")
+    # Menyimpan semua figure supaya muncul bersama
+    figures = []
+
+
+    # --------------------------------------------------------------
+    # Header tabel console
+    # --------------------------------------------------------------
+
+    print()
+
+    print(
+        f"{'N':>12} | "
+        f"{'N_in':>10} | "
+        f"{'pi_hat':>11} | "
+        f"{'abs_error':>11} | "
+        f"{'error%':>9} | "
+        f"{'time(s)':>9}"
+    )
+
     print("-" * 78)
 
+
+    # --------------------------------------------------------------
+    # SIMULASI UTAMA
+    # --------------------------------------------------------------
+
     for N in sample_sizes:
-        pi_hat, N_in, t, x, y, mask = monte_carlo_pi_quarter(N, seed=SEED)
-        abs_err = abs(pi_hat - TRUE_PI)
-        err_pct = abs_err / TRUE_PI * 100
+
+        pi_hat, N_in, t, x, y, mask = monte_carlo_pi_quarter(
+            N,
+            seed=SEED
+        )
+
+        abs_err = abs(
+            pi_hat - TRUE_PI
+        )
+
+        err_pct = (
+            abs_err / TRUE_PI
+        ) * 100
+
 
         results.append({
-            "n_points": N, "n_inside": N_in, "pi_estimate": pi_hat,
-            "true_pi": TRUE_PI, "abs_error": abs_err, "error_pct": err_pct,
-            "elapsed_sec": t,
-        })
-        print(f"{N:>12,} | {N_in:>10,} | {pi_hat:>11.6f} | {abs_err:>11.6f} | {err_pct:>8.4f}% | {t:>9.5f}")
 
-        # (1) scatter plot per-N
-        plot_scatter(x, y, mask, N, pi_hat)
+            "n_points": N,
+
+            "n_inside": N_in,
+
+            "pi_estimate": pi_hat,
+
+            "true_pi": TRUE_PI,
+
+            "abs_error": abs_err,
+
+            "error_pct": err_pct,
+
+            "elapsed_sec": t,
+
+        })
+
+
+        print(
+            f"{N:>12,} | "
+            f"{N_in:>10,} | "
+            f"{pi_hat:>11.6f} | "
+            f"{abs_err:>11.6f} | "
+            f"{err_pct:>8.4f}% | "
+            f"{t:>9.5f}"
+        )
+
+
+        # ----------------------------------------------------------
+        # Scatter plot untuk:
+        # 10.000
+        # 100.000
+        # 1.000.000
+        # ----------------------------------------------------------
+
+        fig = plot_scatter(
+            x,
+            y,
+            mask,
+            N,
+            pi_hat,
+            OUT_DIR / f"scatter_{N}.png"
+        )
+
+        figures.append(fig)
+
+
+    # --------------------------------------------------------------
+    # DATAFRAME HASIL
+    # --------------------------------------------------------------
 
     df_results = pd.DataFrame(results)
-    csv_path = os.path.join(DOWNLOAD_DIR, "pi_quarter_full_results.csv")
-    json_path = os.path.join(DOWNLOAD_DIR, "pi_quarter_full_results.json")
 
-    df_results.to_csv(csv_path, index=False)
-    with open(json_path, "w") as f:
-        json.dump(results, f, indent=2)
 
-    # --- Analisis konvergensi & error pada rentang N yang lebih granular ---
-    extra_sizes = [100, 500, 1_000, 5_000, 10_000, 50_000,
-                   100_000, 500_000, 1_000_000, 5_000_000]
-    extra_pi, extra_err, extra_time = [], [], []
+    # --------------------------------------------------------------
+    # TABEL HASIL ESTIMASI DI CONSOLE
+    # --------------------------------------------------------------
+
+    print()
+    print("=" * 78)
+    print("TABEL HASIL ESTIMASI")
+    print("=" * 78)
+
+    print(
+        df_results.to_string(
+            index=False
+        )
+    )
+
+
+    # --------------------------------------------------------------
+    # SIMPAN CSV + JSON (HANYA JIKA SAVE_FILES = TRUE)
+    # --------------------------------------------------------------
+
+    if SAVE_FILES:
+
+        df_results.to_csv(
+            CODE_DIR / "pi_quarter_full_results.csv",
+            index=False
+        )
+
+        with open(
+            CODE_DIR / "pi_quarter_full_results.json",
+            "w",
+            encoding="utf-8"
+        ) as f:
+
+            json.dump(
+                results,
+                f,
+                indent=2
+            )
+
+
+    # ==================================================================
+    # ANALISIS KONVERGENSI & ERROR PADA RENTANG N YANG LEBIH GRANULAR
+    # ==================================================================
+
+    extra_sizes = [
+        100,
+        500,
+        1_000,
+        5_000,
+        10_000,
+        50_000,
+        100_000,
+        500_000,
+        1_000_000,
+        5_000_000
+    ]
+
+    extra_pi = []
+    extra_err = []
+    extra_time = []
+
+
     for N in extra_sizes:
-        pi_hat, N_in, t, *_ = monte_carlo_pi_quarter(N, seed=SEED)
-        extra_pi.append(pi_hat)
-        extra_err.append(abs(pi_hat - TRUE_PI) / TRUE_PI * 100)
-        extra_time.append(t)
 
-    # (2) konvergensi
-    plot_convergence(extra_sizes, extra_pi)
-    # (3) error (%) vs N
-    plot_error(extra_sizes, extra_err)
-    # (4) waktu eksekusi vs N
-    plot_execution_time(extra_sizes, extra_time)
-    # (5) proporsi aktual vs teori
-    plot_proportion_bar(sample_sizes, [r["n_inside"] for r in results])
+        pi_hat, N_in, t, *_ = monte_carlo_pi_quarter(
+            N,
+            seed=SEED
+        )
 
-    # (6) tabel ringkasan
+        extra_pi.append(
+            pi_hat
+        )
+
+        extra_err.append(
+            abs(
+                pi_hat - TRUE_PI
+            ) / TRUE_PI * 100
+        )
+
+        extra_time.append(
+            t
+        )
+
+
+    # ==================================================================
+    # 8. KONVERGENSI
+    # ==================================================================
+
+    fig = plot_convergence(
+        extra_sizes,
+        extra_pi,
+        OUT_DIR / "convergence.png"
+    )
+
+    figures.append(fig)
+
+
+    # ==================================================================
+    # 9. ERROR VS N
+    # ==================================================================
+
+    fig = plot_error(
+        extra_sizes,
+        extra_err,
+        OUT_DIR / "error_vs_n.png"
+    )
+
+    figures.append(fig)
+
+
+    # ==================================================================
+    # 10. WAKTU EKSEKUSI VS N
+    # ==================================================================
+
+    fig = plot_execution_time(
+        extra_sizes,
+        extra_time,
+        OUT_DIR / "execution_time.png"
+    )
+
+    figures.append(fig)
+
+
+    # ==================================================================
+    # 11. PROPORSI AKTUAL VS TEORITIS
+    # ==================================================================
+
+    fig = plot_proportion_bar(
+        sample_sizes,
+        [
+            r["n_inside"]
+            for r in results
+        ],
+        OUT_DIR / "proportion_bar.png"
+    )
+
+    figures.append(fig)
+
+
+    # ==================================================================
+    # 12. TABEL RINGKASAN SEBAGAI GAMBAR
+    # ==================================================================
+
     df_display = df_results.copy()
-    df_display["n_points"] = df_display["n_points"].map(lambda v: f"{v:,}")
-    df_display["n_inside"] = df_display["n_inside"].map(lambda v: f"{v:,}")
-    df_display["pi_estimate"] = df_display["pi_estimate"].map(lambda v: f"{v:.6f}")
-    df_display["true_pi"] = df_display["true_pi"].map(lambda v: f"{v:.6f}")
-    df_display["abs_error"] = df_display["abs_error"].map(lambda v: f"{v:.6f}")
-    df_display["error_pct"] = df_display["error_pct"].map(lambda v: f"{v:.4f}%")
-    df_display["elapsed_sec"] = df_display["elapsed_sec"].map(lambda v: f"{v:.5f}")
-    df_display.columns = ["N", "N di dalam", "π̂", "π sebenarnya", "Error Absolut", "Error (%)", "Waktu (s)"]
-    plot_summary_table(df_display)
 
-    print(f"\nSelesai. File CSV dan JSON tersimpan di folder Downloads: {DOWNLOAD_DIR}")
+
+    df_display["n_points"] = df_display[
+        "n_points"
+    ].map(
+        lambda v: f"{v:,}"
+    )
+
+
+    df_display["n_inside"] = df_display[
+        "n_inside"
+    ].map(
+        lambda v: f"{v:,}"
+    )
+
+
+    df_display["pi_estimate"] = df_display[
+        "pi_estimate"
+    ].map(
+        lambda v: f"{v:.6f}"
+    )
+
+
+    df_display["true_pi"] = df_display[
+        "true_pi"
+    ].map(
+        lambda v: f"{v:.6f}"
+    )
+
+
+    df_display["abs_error"] = df_display[
+        "abs_error"
+    ].map(
+        lambda v: f"{v:.6f}"
+    )
+
+
+    df_display["error_pct"] = df_display[
+        "error_pct"
+    ].map(
+        lambda v: f"{v:.4f}%"
+    )
+
+
+    df_display["elapsed_sec"] = df_display[
+        "elapsed_sec"
+    ].map(
+        lambda v: f"{v:.5f}"
+    )
+
+
+    df_display.columns = [
+        "N",
+        "N di dalam",
+        "π̂",
+        "π sebenarnya",
+        "Error Absolut",
+        "Error (%)",
+        "Waktu (s)"
+    ]
+
+
+    fig = plot_summary_table(
+        df_display,
+        OUT_DIR / "summary_table.png"
+    )
+
+    figures.append(fig)
+
+
+    # ==================================================================
+    # TAMPILKAN SEMUA GRAFIK OTOMATIS
+    # ==================================================================
+
+    print()
+    print("=" * 78)
+    print("SEMUA VISUALISASI SELESAI DIBUAT.")
+    print("=" * 78)
+
+    print(
+        f"Jumlah visualisasi: {len(figures)}"
+    )
+
+    print(
+        "Grafik akan ditampilkan otomatis di VS Code."
+    )
+
+    print(
+        "Gunakan tombol Save/Download pada Plot Viewer "
+        "hanya untuk grafik yang ingin disimpan."
+    )
+
+    if SAVE_FILES:
+
+        print()
+        print(
+            f"File otomatis disimpan di:\n{OUT_DIR}"
+        )
+
+    else:
+
+        print()
+        print(
+            "Penyimpanan otomatis OFF "
+            "(SAVE_FILES = False)."
+        )
+
+    # Satu kali show di akhir agar seluruh figure tampil
+    # tanpa harus menjalankan ulang program satu per satu.
+    plt.show()
