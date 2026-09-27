@@ -3,64 +3,123 @@
  PROJECT 2 : STOCK PRICE PREDICTION USING MONTE CARLO SIMULATION
               (Geometric Brownian Motion)
 ==================================================================
-Author : (D121241080 Andi Nurul Aliyah Haris)
-
-Konsep:
-Harga saham dimodelkan mengikuti Geometric Brownian Motion (GBM):
-
-    S(t+dt) = S(t) * exp[ (mu - 0.5*sigma^2) * dt + sigma * sqrt(dt) * Z ]
-
-dengan:
-    S(t)  : harga saham pada waktu t
-    mu    : expected return / drift tahunan (dari data historis)
-    sigma : volatilitas tahunan (dari data historis)
-    dt    : langkah waktu (1 hari kerja = 1/252 tahun)
-    Z     : bilangan acak dari distribusi normal standar N(0,1)
-
-SUMBER DATA HISTORIS (DATA ASLI / RIIL):
-Data harga historis AAPL diambil LANGSUNG dari Yahoo Finance
-(https://finance.yahoo.com/quote/AAPL/history/), mencakup 251 hari
-perdagangan aktual dari 25 September 2025 s/d 24 September 2026
-(±1 tahun data terkini). Kolom yang dipakai adalah 'Close' (harga
-penutupan harian, sudah disesuaikan untuk stock split).
-
-Catatan: Jika ingin memperbarui data ke periode terbaru, cukup ganti
-fungsi `get_historical_prices()` di bawah dengan:
-
-    import yfinance as yf
-    df = yf.download("AAPL", period="1y", interval="1d")
-    prices = df["Close"].values
-
-Seluruh pipeline berikutnya (hitung log-return, estimasi drift &
-volatilitas, simulasi Monte Carlo GBM) tidak perlu diubah sama sekali.
+Author : (D121241080 - Andi Nurul Aliyah Haris)
 ==================================================================
 """
 
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+from matplotlib.widgets import Button
 import json
+import os
+from pathlib import Path
 
 np.random.seed(42)
 
+# ------------------------------------------------------------------
+# PATH DATA CSV
+# ------------------------------------------------------------------
+
+BASE_DIR = Path(__file__).resolve().parent
+DATA_DIR = Path(os.environ.get(
+    "PEMSIM_DATA_DIR",
+    "/Users/aliyahharis/Desktop/pemsim"
+))
+DOWNLOADS_DIR = BASE_DIR / "downloads"
+
+# Folder untuk ringkasan/statistik dibuat otomatis.
+DOWNLOADS_DIR.mkdir(parents=True, exist_ok=True)
+
 TICKER = "AAPL"
-DATA_PATH = "AAPL_yahoo_finance.csv"
 DATA_SOURCE_URL = "https://finance.yahoo.com/quote/AAPL/history/"
 TRADING_DAYS = 252
 
 
-def get_historical_prices(csv_path=DATA_PATH):
+def find_data_csv():
     """
-    Membaca data harga historis RIIL saham AAPL dari file CSV yang
-    telah diunduh langsung dari Yahoo Finance (lihat DATA_SOURCE_URL
-    di atas). Mengembalikan array harga penutupan (Close) terurut
-    berdasarkan tanggal (ascending).
+    Mencari CSV data historis AAPL secara otomatis di folder pemsim.
+
+    Urutan:
+        1. AAPL_yahoo_finance.csv jika ada.
+        2. CSV lain yang memiliki kolom Date dan Close.
+        3. Jika ada beberapa CSV yang cocok, dipakai yang paling baru.
     """
+    if not DATA_DIR.exists():
+        raise FileNotFoundError(
+            "Folder data CSV tidak ditemukan.\n"
+            f"Folder yang dicek: {DATA_DIR}\n"
+            "Pastikan folder /Users/aliyahharis/Desktop/pemsim ada."
+        )
+
+    preferred = DATA_DIR / "AAPL_yahoo_finance.csv"
+    if preferred.exists():
+        return preferred
+
+    candidates = sorted(
+        DATA_DIR.rglob("*.csv"),
+        key=lambda p: p.stat().st_mtime,
+        reverse=True
+    )
+
+    valid = []
+    for csv_path in candidates:
+        try:
+            header = pd.read_csv(csv_path, nrows=0)
+            columns = {str(c).strip().lower() for c in header.columns}
+            if "date" in columns and "close" in columns:
+                valid.append(csv_path)
+        except Exception:
+            continue
+
+    if valid:
+        print(f"[info] Memakai file CSV yang ditemukan otomatis: {valid[0]}")
+        return valid[0]
+
+    raise FileNotFoundError(
+        "Tidak ada file CSV dengan kolom Date dan Close yang ditemukan.\n"
+        f"Folder yang dicek: {DATA_DIR}\n"
+        "Pastikan CSV harga historis AAPL ada di folder tersebut."
+    )
+
+
+def get_historical_prices(csv_path=None):
+    """
+    Membaca data harga historis RIIL saham AAPL dari CSV Yahoo Finance.
+    Kolom Date dan Close dibaca, lalu data diurutkan berdasarkan tanggal.
+    """
+    if csv_path is None:
+        csv_path = find_data_csv()
+
     df = pd.read_csv(csv_path)
-    df["Date"] = pd.to_datetime(df["Date"])
-    df = df.sort_values("Date").reset_index(drop=True)
-    prices = df["Close"].values
-    dates = df["Date"].values
+    df.columns = [str(c).strip() for c in df.columns]
+
+    # Samakan nama kolom secara sederhana agar "date"/"close" tetap terbaca.
+    column_map = {c.lower(): c for c in df.columns}
+    date_col = column_map.get("date")
+    close_col = column_map.get("close")
+
+    if date_col is None or close_col is None:
+        raise ValueError(
+            f"CSV {csv_path.name} harus memiliki kolom 'Date' dan 'Close'. "
+            f"Kolom yang ditemukan: {list(df.columns)}"
+        )
+
+    df[date_col] = pd.to_datetime(df[date_col], errors="coerce")
+    df[close_col] = pd.to_numeric(df[close_col], errors="coerce")
+
+    df = df.dropna(subset=[date_col, close_col])
+    df = df.sort_values(date_col).reset_index(drop=True)
+
+    prices = df[close_col].to_numpy(dtype=float)
+    dates = df[date_col].to_numpy()
+
+    if len(prices) < 2:
+        raise ValueError("Data historis harus memiliki minimal 2 baris harga penutupan.")
+
+    if np.any(prices <= 0):
+        raise ValueError("Semua harga Close harus bernilai positif untuk perhitungan log-return.")
+
     return prices, dates
 
 
@@ -95,7 +154,52 @@ def simulate_gbm_paths(s0, mu, sigma, n_days, n_simulations):
     return paths
 
 
-def plot_historical(prices, dates, filename):
+def add_download_button(fig, default_filename):
+    """
+    Menambahkan tombol "Download PNG" pada setiap grafik.
+    Klik tombol untuk memilih lokasi penyimpanan; menutup grafik berarti
+    grafik tidak perlu disimpan.
+    """
+    button_ax = fig.add_axes([0.78, 0.01, 0.18, 0.055])
+    save_button = Button(button_ax, "Download PNG")
+
+    def save_figure(_event):
+        try:
+            import tkinter as tk
+            from tkinter import filedialog
+
+            root = tk.Tk()
+            root.withdraw()
+            root.attributes("-topmost", True)
+
+            output_path = filedialog.asksaveasfilename(
+                title="Simpan grafik",
+                initialfile=default_filename,
+                initialdir=str(Path.home() / "Downloads"),
+                defaultextension=".png",
+                filetypes=[("PNG image", "*.png")]
+            )
+            root.destroy()
+
+            if output_path:
+                # Sembunyikan tombol sementara agar hasil PNG hanya berisi grafik.
+                button_ax.set_visible(False)
+                fig.canvas.draw_idle()
+                fig.savefig(output_path, dpi=300, bbox_inches="tight")
+                button_ax.set_visible(True)
+                fig.canvas.draw_idle()
+                print(f"[saved] Grafik disimpan: {output_path}")
+        except Exception as exc:
+            print(f"[warning] Grafik tidak berhasil disimpan melalui dialog: {exc}")
+
+    save_button.on_clicked(save_figure)
+    # Keep a persistent reference so the button callback remains alive.
+    if not hasattr(fig, "_download_buttons"):
+        fig._download_buttons = []
+    fig._download_buttons.append(save_button)
+
+
+def plot_historical(prices, dates):
     fig, ax = plt.subplots(figsize=(9, 4.5))
     ax.plot(dates, prices, color="black", linewidth=1.2)
     ax.set_title(f"Harga Historis Riil Saham {TICKER}\n"
@@ -105,12 +209,12 @@ def plot_historical(prices, dates, filename):
     ax.set_ylabel("Harga penutupan (USD)")
     ax.grid(alpha=0.3)
     fig.autofmt_xdate()
-    plt.tight_layout()
-    plt.savefig(filename, dpi=150)
-    plt.close()
+    fig.subplots_adjust(bottom=0.18)
+    add_download_button(fig, "stock_historical.png")
+    return fig
 
 
-def plot_paths(paths, filename, n_show=200):
+def plot_paths(paths, n_show=200):
     fig, ax = plt.subplots(figsize=(9, 5.5))
     idx = np.random.choice(paths.shape[0], min(n_show, paths.shape[0]), replace=False)
     for i in idx:
@@ -123,12 +227,12 @@ def plot_paths(paths, filename, n_show=200):
     ax.set_ylabel("Harga saham (USD)")
     ax.legend()
     ax.grid(alpha=0.3)
-    plt.tight_layout()
-    plt.savefig(filename, dpi=150)
-    plt.close()
+    fig.subplots_adjust(bottom=0.14)
+    add_download_button(fig, "stock_paths_30d.png")
+    return fig
 
 
-def plot_final_distribution(final_prices, s0, filename, day_label):
+def plot_final_distribution(final_prices, s0, day_label):
     fig, ax = plt.subplots(figsize=(8, 5))
     ax.hist(final_prices, bins=60, color="royalblue", alpha=0.75, edgecolor="white")
     mean_p = np.mean(final_prices)
@@ -147,9 +251,11 @@ def plot_final_distribution(final_prices, s0, filename, day_label):
     ax.set_ylabel("Frekuensi")
     ax.legend(fontsize=8)
     ax.grid(alpha=0.3)
-    plt.tight_layout()
-    plt.savefig(filename, dpi=150)
-    plt.close()
+    fig.subplots_adjust(bottom=0.16)
+
+    filename = f"stock_dist_{day_label}d.png"
+    add_download_button(fig, filename)
+    return fig
 
 
 if __name__ == "__main__":
@@ -158,14 +264,14 @@ if __name__ == "__main__":
     mu_annual, sigma_annual, log_returns = compute_drift_volatility(hist_prices)
     s0 = hist_prices[-1]
 
-    print(f"Sumber data                  : {DATA_SOURCE_URL}")
+    print(f"Sumber data                 : {DATA_SOURCE_URL}")
     print(f"Periode data                 : {pd.Timestamp(hist_dates[0]).date()} s/d {pd.Timestamp(hist_dates[-1]).date()}")
     print(f"Jumlah hari data historis    : {len(hist_prices)}")
     print(f"Harga awal simulasi (S0)     : {s0:.2f} USD (harga penutupan terakhir)")
     print(f"Estimasi drift tahunan (mu)  : {mu_annual*100:.2f}%")
     print(f"Estimasi volatilitas (sigma) : {sigma_annual*100:.2f}%")
 
-    plot_historical(hist_prices, hist_dates, "stock_historical.png")
+    fig_historical = plot_historical(hist_prices, hist_dates)
 
     # 2. Simulasi Monte Carlo multi-path, horizon 30 hari (sesuai instruksi)
     n_simulations = 10_000
@@ -173,14 +279,14 @@ if __name__ == "__main__":
     paths = simulate_gbm_paths(s0, mu_annual, sigma_annual, horizon_days, n_simulations)
     final_prices_30 = paths[:, -1]
 
-    plot_paths(paths, "stock_paths_30d.png")
-    plot_final_distribution(final_prices_30, s0, "stock_dist_30d.png", "30")
+    fig_paths = plot_paths(paths)
+    fig_dist_30 = plot_final_distribution(final_prices_30, s0, "30")
 
     # 3. Simulasi tambahan horizon lebih panjang (1 tahun) untuk analisis risiko
     horizon_long = 252
     paths_long = simulate_gbm_paths(s0, mu_annual, sigma_annual, horizon_long, 5_000)
     final_prices_long = paths_long[:, -1]
-    plot_final_distribution(final_prices_long, s0, "stock_dist_252d.png", "252")
+    fig_dist_252 = plot_final_distribution(final_prices_long, s0, "252")
 
     # 4. Ringkasan statistik
     summary = {
@@ -211,11 +317,70 @@ if __name__ == "__main__":
         },
     }
 
-    with open("stock_results.json", "w") as f:
+    # Simpan ringkasan sebagai JSON (untuk dipakai program lain)
+    with open(DOWNLOADS_DIR / "stock_results.json", "w") as f:
         json.dump(summary, f, indent=2)
+
+    # Simpan ringkasan sebagai CSV (untuk dibuka di Excel / dilampirkan ke laporan)
+    summary_rows = [
+        {"Parameter": "Ticker", "Nilai": summary["ticker"]},
+        {"Parameter": "Sumber Data", "Nilai": summary["data_source_url"]},
+        {"Parameter": "Periode Data Mulai", "Nilai": summary["data_start_date"]},
+        {"Parameter": "Periode Data Selesai", "Nilai": summary["data_end_date"]},
+        {"Parameter": "Jumlah Hari Data Historis", "Nilai": summary["n_historical_days"]},
+        {"Parameter": "Harga Awal (S0)", "Nilai": round(summary["s0"], 4)},
+        {"Parameter": "Drift Tahunan mu (%)", "Nilai": round(summary["mu_annual_pct"], 4)},
+        {"Parameter": "Volatilitas Tahunan sigma (%)", "Nilai": round(summary["sigma_annual_pct"], 4)},
+        {"Parameter": "Jumlah Simulasi (horizon 30 hari)", "Nilai": summary["n_simulations"]},
+        {"Parameter": "Mean Harga (30 hari)", "Nilai": round(summary["horizon_30d"]["mean"], 4)},
+        {"Parameter": "Median Harga (30 hari)", "Nilai": round(summary["horizon_30d"]["median"], 4)},
+        {"Parameter": "Std Dev Harga (30 hari)", "Nilai": round(summary["horizon_30d"]["std"], 4)},
+        {"Parameter": "P5 Harga (30 hari)", "Nilai": round(summary["horizon_30d"]["p5"], 4)},
+        {"Parameter": "P95 Harga (30 hari)", "Nilai": round(summary["horizon_30d"]["p95"], 4)},
+        {"Parameter": "Prob Harga > S0 (30 hari) %", "Nilai": round(summary["horizon_30d"]["prob_above_s0"], 4)},
+        {"Parameter": "Mean Harga (252 hari)", "Nilai": round(summary["horizon_252d"]["mean"], 4)},
+        {"Parameter": "Median Harga (252 hari)", "Nilai": round(summary["horizon_252d"]["median"], 4)},
+        {"Parameter": "Std Dev Harga (252 hari)", "Nilai": round(summary["horizon_252d"]["std"], 4)},
+        {"Parameter": "P5 Harga (252 hari)", "Nilai": round(summary["horizon_252d"]["p5"], 4)},
+        {"Parameter": "P95 Harga (252 hari)", "Nilai": round(summary["horizon_252d"]["p95"], 4)},
+        {"Parameter": "Prob Harga > S0 (252 hari) %", "Nilai": round(summary["horizon_252d"]["prob_above_s0"], 4)},
+    ]
+    pd.DataFrame(summary_rows).to_csv(DOWNLOADS_DIR / "stock_summary.csv", index=False)
+
+    # Tampilkan ringkasan statistik prediksi di terminal.
+    print("\\n--- Ringkasan statistik prediksi ---")
+    for label, data in [("30 hari", summary["horizon_30d"]),
+                        ("252 hari (1 tahun)", summary["horizon_252d"])]:
+        print(f"\\nHorizon {label}")
+        print(f"  Mean                 : ${data['mean']:.2f}")
+        print(f"  Median               : ${data['median']:.2f}")
+        print(f"  Std Dev              : ${data['std']:.2f}")
+        print(f"  P5 (5%)              : ${data['p5']:.2f}")
+        print(f"  P95 (95%)            : ${data['p95']:.2f}")
+        print(f"  P(harga > S0)        : {data['prob_above_s0']:.2f}%")
+
+    # Simpan juga data historis + log-return sebagai CSV (bahan mentah utk laporan)
+    hist_df = pd.DataFrame({
+        "Date": pd.to_datetime(hist_dates).date,
+        "Close": hist_prices,
+    })
+    hist_df["Log_Return"] = np.append(np.nan, log_returns)
+    hist_df.to_csv(DOWNLOADS_DIR / "historical_prices_and_returns.csv", index=False)
+
+    print("\\n--- Visualisasi ---")
+    print("4 grafik dibuka otomatis.")
+    print("Klik 'Download PNG' pada grafik untuk menyimpan; tutup jendela grafik untuk tidak menyimpan.")
+
+    # Tampilkan SEMUA grafik sekaligus. Tidak ada penyimpanan PNG otomatis.
+    plt.show()
 
     print("\n--- Ringkasan horizon 30 hari ---")
     for k, v in summary["horizon_30d"].items():
         print(f"{k:15s}: {v:.3f}")
 
-    print("\nSelesai. Hasil disimpan ke stock_results.json dan file gambar di dalam folder ini.")
+    print(f"\nSelesai.")
+    print("Grafik (.png)         -> dipilih manual lewat tombol Download PNG")
+    print(f"Ringkasan .json/.csv  -> {DOWNLOADS_DIR}")
+    print(f"  - stock_results.json")
+    print(f"  - stock_summary.csv")
+    print(f"  - historical_prices_and_returns.csv")
